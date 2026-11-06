@@ -1,0 +1,32 @@
+name: build
+on: [workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dobby
+        run: |
+          git clone --depth 1 https://github.com/jmpews/Dobby.git /tmp/Dobby
+          mkdir -p /tmp/Dobby/build && cd /tmp/Dobby/build
+          cmake .. -G Xcode -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+          xcodebuild -project Dobby.xcodeproj -target dobby \
+            -sdk iphoneos -arch arm64 -configuration Release build
+          mkdir -p "$GITHUB_WORKSPACE/lib"
+          find /tmp/Dobby/build -name 'libdobby.a' -exec cp {} "$GITHUB_WORKSPACE/lib/" \;
+
+      - name: Dylib
+        run: |
+          clang++ -dynamiclib -arch arm64 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -miphoneos-version-min=15.0 -fobjc-arc -std=c++17 \
+            -install_name @rpath/ffautoaim.dylib \
+            -I/tmp/Dobby/include -Llib -ldobby \
+            -framework Foundation -framework UIKit \
+            src/AutoAim.mm -o ffautoaim.dylib
+
+      - uses: actions/upload-artifact@v4
+        with: { name: ffautoaim, path: ffautoaim.dylib }
